@@ -1,177 +1,242 @@
-[![npm version](https://img.shields.io/npm/v/react-css-themr.svg?style=flat-square)](https://www.npmjs.com/package/react-css-themr)
-[![Build Status](http://img.shields.io/travis/javivelasco/react-css-themr/master.svg?style=flat-square)](https://travis-ci.org/javivelasco/react-css-themr)
-[![NPM Status](http://img.shields.io/npm/dm/react-css-themr.svg?style=flat-square)](https://www.npmjs.com/package/react-css-themr)
+[![npm version](https://img.shields.io/npm/v/react-css-super-themr.svg?style=flat-square)](https://www.npmjs.com/package/react-css-super-themr)
+[![NPM Status](http://img.shields.io/npm/dm/react-css-super-themr.svg?style=flat-square)](https://www.npmjs.com/package/react-css-super-themr)
 
-# React CSS Themr
+# React CSS Super Themr
+This package is a customized version of [`react-css-themr`](https://github.com/javivelasco/react-css-themr). Original package implements a cool concept for adhoc and context theming of re-usable ReactJS components; unfortunately, in practice it does not shine when you cannot guarantee a constant order of classes in your CSS bundle(s). React CSS Super Themr solves this.
 
-Easy theming and composition for CSS Modules.
+### Differences from React CSS Themr
+If you are already familiary with `react-css-themr`, here are the differences in this package:
+-   Default theme priority is: ad-hoc (highest), context, default (lowest);
+-   Possible to change priority of context and default theme, both for a component as a whole, and for its particular instanse;
+-   Possible to idependently change composition (merge) method for context-default theme pair, and for the result of this merge and ad-hoc theme; bot for a component as a whole, and for its particular instances;
+-   By default (and with default priority), context theme is softly merged into default one; then ad-hoc theme is deeply merged into the result of the first merge.
 
+### Concept
+It is assumed through this document that you use in your app [ReactJS](https://facebook.github.io/react/) with [Babel](https://babeljs.io/), [CSS Modules](https://github.com/gajus/babel-plugin-react-css-modules), and [SCSS](http://sass-lang.com/documentation/file.SCSS_FOR_SASS_USERS.html); sure [Webpack](https://webpack.js.org/) is assumed to be your bundler.
+
+React CSS Super Themr helps to  create reusable ReactJS components that can be easily styled for use in different locations. The key ideas are:
+-  **Default style theme** is assinged to the component upon component definition;
+-  **Ad-hoc style theme** can be applied to the component instances, to customize some (possibly all) styling aspects of the default theme;
+-  **Context style theme** is a way to customize default theme of all instances of a specific component within some segment of the application.
+
+Technically, any theme is a SCSS stylesheet. When imported into JS code as `import theme from './theme.scss';`, the stylesheet itself is compiled and bundled into CSS bundle(s), while `theme` in JS turns into an object with original class names from SCSS as keys, and the corresponding class names in the generated CSS as values.
+
+Multiple themes (default, context, ad-hoc), applied to the same instance of a component, have to be merged together. Here are three ways to merge a pair of themes:
+-  **Swap (X, Y)** - theme **Y** completely replaces theme **X** - only SCSS classes from **Y** will be applied to the component instance;
+-  **Soft (X, Y)** - all SCSS classes from theme **Y** will be applied to the component instance, overriding matching classes from theme **X**, however any classes present only in theme **X** will be also applied;
+-  **Deep (X, Y)** - all SCSS classes from themes **X** and **Y** will be applied to the component instance. It means that for any style rule present for the same class both in theme **X** and **Y**, the final value will depend on the final order of theme styles in your CSS bundle. This is ***DANGEROUS*** because chances are that you cannot control the order of code corresponding to different SCSS modules in the final CSS bundle(s); and it is hard to guarantee that the order will stay constant during the lifetime of your application. Because of this, deep theme merging is allowed only for the ad-hoc theming, where you can use `!important` statements in SCSS to ensure that ad-hoc style rules have higher priority, independent of code order in the CSS bundle. As any ad-hoc theme, by design, has the highest priority, and related code is never reused, using `!important` statement in this case does not cause any side-effects.
+
+**Theme priority:** by default, context theme has priority over the default theme of a component instance. It is possible to configure a component, or its specific instance, so that the default theme has priority over the context one. Ad-hoc theme always has the highest priority!
+
+By default (i) the context theme is softly merged into the default theme of the component; then (ii) the ad-hoc theme is deeply merged into the result. Any missing theme is treated an empty theme with no classes; deep and soft merge of an empty theme into another theme does not change the later, while swap merge of an empty theme into another theme results in the empty theme as the result. When priority of context and default themes is switched, then default theme is merged into the context on in the step (i). It is possible to change the merge type in the step (i) for swap-merge; and it is possible to independently change the merge type in the step (ii) for soft-, or swap-merge.
+
+### Example
+Install this package with
+```sh
+$ npm install --save react-css-super-themr
 ```
-$ npm install --save react-css-themr
-```
 
-**Note: Feedback and contributions on the docs are highly appreciated.**
+Say, we want to make the following ReactJS component themable (blue text inside green box):
+```js
+// style.scss
 
-## Why?
-
-When you use [CSS Modules](https://github.com/css-modules/css-modules) to style your components, a classnames object is usually imported from the same component. Since css classes are scoped by default, there is no easy way to make your component customizable for the outside world.
-
-## The approach
-
-Taking ideas from [future-react-ui](https://github.com/nikgraf/future-react-ui) and [react-themeable](https://github.com/markdalgleish/react-themeable), a component should be shipped **without** styles. This means we can consider the styles as an **injectable dependency**. In CSS Modules you can consider the imported classnames object as a **theme** for a component. Therefore, every styled component should define a *classname API* to be used in the rendering function.
-
-The most immediate way of providing a classname object is via *props*. In case you want to import a component with a theme already injected, you have to write a higher order component that does the job. This is ok for your own components, but for ui-kits like [React Toolbox](http://www.react-toolbox.com) or [Belle](http://nikgraf.github.io/belle/), you'd have to write a wrapper for every single component you want to use. In this fancy, you can understand the theme as a **set** of related classname objects for different components. It makes sense to group them together in a single object and move it through the component tree using a context. This way, you can provide a theme either via **context**, **hoc** or **props**.
-
-The approach of react-css-themr consists of a *provider* and a *decorator*. The provider sets a context theme. The decorator adds to your components the logic to figure out which theme should be used or how should it be composed, depending on configuration, context and props.
-
-## Combining CSS modules
-
-There are three possible sources for your component. Sorted by priority: **context**, **configuration** and **props**. Any of them can be missing. In case multiple themes are present,  you may want to compose the final classnames object in three different ways:
-
-- *Override*: the theme object with the highest priority is the one used.
-- *Softly merging*: theme objects are merged but if a key is present in more than one object, the final value corresponds to the theme with highest priority.
-- *Deeply merging*: theme objects are merged and if a key is present in more than one object, the values for each objects are concatenated.
-
-You can choose whatever you want. We consider the last one as the most flexible so it's selected *by default*.
-
-## How does it work?
-
-Say you have a `Button` component you want to make themeable. You should pass a unique name identifier that will be used to retrieve its theme from context in case it is present.
-
-```jsx
-// Button.js
-import React, { Component } from 'react';
-import { themr } from 'react-css-themr';
-
-@themr('MyThemedButton')
-class Button extends Component {
-  render() {
-    const { theme, icon, children } = this.props;
-    return (
-      <button className={theme.button}>
-        { icon ? <i className={theme.icon}>{icon}</i> : null}
-        <span className={theme.content}>{children}</span>
-      </button>
-    )
-  }
+.box {
+  background: green;
 }
 
-export default Button;
-```
-
-The component is defining an API for theming that consists of three classnames: button, icon and content. Now, a component can use a button with a success theme like:
-
-```jsx
-import Button from './Button';
-import successTheme from './SuccessButton.css';
-
-export default (props) => (
-  <div {...props}>
-    <p>Do you like it?</p>
-    <Button theme={successTheme}>Yeah!</Button>
-  </div>
-);
-```
-
-### Default theming
-
-If you use a component with a base theme, you may want to import the component with the theme already injected. Then you can compose its style via props with another theme object. In this case the base css will **always** be bundled:
-
-```jsx
-// SuccessButton.js
-import React, { Component } from 'react';
-import { themr } from 'react-css-themr';
-import successTheme from './SuccessButton.css';
-
-@themr('MySuccessButton', successTheme)
-class Button extends Component {
-  render() {
-    const { theme, icon, children } = this.props;
-    return (
-      <button className={theme.button}>
-        { icon ? <i className={theme.icon}>{icon}</i> : null}
-        <span className={theme.content}>{children}</span>
-      </button>
-    )
-  }
+.text {
+  color: blue;
 }
 
-export default Button;
-```
+// Component.jsx
 
-Imagine you want to make the success button uppercase for a specific case. You can include the classname mixed with other classnames:
-
-```jsx
 import React from 'react';
-import SuccessButton from 'SuccessButon';
-import style from './Section.css';
+import './style.scss';
 
-export default () => (
-  <section className={style.section}>
-    <SuccessButton theme={style}>Yai!</SuccessButton>
-  </section>
-);
-```
+export default function Component() {
+  return (
+    <div styleName="box">
+      <div styleName="text">Sample Component</div>
+    </div>
+  );
+}
 
-And being `Section.css` something like:
+// Demo.jsx
 
-```scss
-.section { border: 1px solid red; }
-.button  { text-transform: uppercase; }
-```
-
-The final classnames object for the `Button` component would include class values from `SuccessButton.css` and `Section.css` so it would be uppercase!
-
-### Context theming
-
-Although context theming is not limited to ui-kits, it's very useful to avoid declaring hoc for every component. For example, in [react-toolbox](http://www.react-toolbox.com), you can define a context theme like:
-
-```jsx
 import React from 'react';
-import { render } from 'react-dom';
-import { ThemeProvider } from 'react-css-themr';
-import App from './app'
+import Component from './Component';
 
-const contextTheme = {
-  RTButton: require('react-toolbox/lib/button/style.scss'),
-  RTDialog: require('react-toolbox/lib/dialog/style.scss')
+export default function Demo() {
+  return (
+    <div>
+      <Component />
+      <Component />
+      <Component />
+    </div>
+  );
+}
+```
+
+We do the following simple update of `Component.jsx`:
+```js
+// Component.jsx
+
+import PT from 'prop-types';
+import React from 'react';
+import { themr } from 'react-css-super-themr';
+import style from './style.scss';
+
+function Component({ theme }) {
+  return (
+    <div className={theme.box}>
+      <div className={theme.text}>Sample Component</div>
+    </div>
+  );
+}
+
+Component.propTypes = {
+  theme: PT.shape({
+    box: PT.string,
+    text: PT.string,
+  }).isRequired,
 };
 
-const content = (
-  <ThemeProvider theme={contextTheme}>
-    <App />
-  </ThemeProvider>
-);
-
-render(content, document.getElementById('app'));
+export default themr('Component', style)(Component);
 ```
 
-The main idea is to inject classnames objects for each component via context. This way you can have the whole theme in a single place and forget about including styles in every require. Any component `Button` or `Dialog` from will use the provided styles in the context.
+Say, for one of the component instances you need to add some padding around the text, and also to change text color to red. You can use ad-hoc theming (`!important` keywords guarantee that adhoc style will be applied to the component instance no matter what order of themes is inside your CSS bundle):
+```js
+// adhoc-style.scss
 
-## API
+.box {
+  padding: 24px !important;
+}
 
-### `<ThemeProvider theme>`
+.text {
+  color: red !important;
+}
 
-Makes available a `theme` context to use in styled components. The shape of the theme object consists of an object whose keys are identifiers for styled components provided with the `themr` function with each theme as the corresponding value. Useful for ui-kits.
+// Demo.jsx
 
-### `themr(Identifier, [defaultTheme], [options])`
+import React from 'react';
+import Component from './Component';
+import adhocTheme from './adhoc-style.scss';
 
-Returns a `function` to wrap a component and make it themeable.
+export default function Demo() {
+  return (
+    <div>
+      <Component theme={adhocTheme} />
+      <Component />
+      <Component />
+    </div>
+  );
+}
+```
 
-The returned component accepts a `theme`, `composeTheme`, `innerRef` and `mapThemrProps` props apart from the props of the original component. They former two are used to provide a `theme` to the component and to configure the style composition, which can be configured via options too. `innerRef` is used to pass a ref callback to the decorated component and `mapThemrProps` is a function that can be used to map properties to the decorated component. The function arguments are:
+Say, you want to update the style of two other component instances in the same manner, using context theming. Pay attention, that in this case you do not use `!important` keywords, to avoid problems with the ad-hoc styling. Also we use SCSS `@import` to import and extend the default theme, thus keeping, despite the soft merge, default values of style rules that we do not modify.
+```js
+// context-style.scss
 
-- `Identifier` *(String)* used to provide a unique identifier to the component that will be used to get a theme from context.
-- `[defaultTheme]` (*Object*) is  classname object resolved from CSS modules. It will be used as the default theme to calculate a new theme that will be passed to the component.
-- `[options]` (*Object*) If specified it allows to customize the behavior: 
-  - [`composeTheme = 'deeply'`] *(String)* allows to customize the way themes are merged or to disable merging completely. The accepted values are `deeply` to deeply merge themes, `softly` to softly merge themes and `false` to disable theme merging.
-  - [`mapThemrProps = (props, theme) => ({ ref, theme })`] *(Function)* allows to customize how properties are passed down to the decorated component. By default, themr extracts all own properties passing down just `innerRef` as `ref` and the generated theme as `theme`. If you are decorating a component that needs to map the reference or any other custom property, this function is called with *all* properties given to the component plus the generated `theme` in the second parameter. It should return the properties you want to pass.
+@import "style";
 
-## About
+.box {
+  // background: green; // This will be inherited from "style.scss" thanks to
+  // the import.
+  padding: 24px;
+}
 
-The project is originally authored by [Javi Velasco](http://www.javivelasco.com) as an effort of providing a better customization experience for [React Toolbox](http://www.react-toolbox.com). Any comments, improvements or feedback is highly appreciated.
+.text {
+  // color: blue; // This value from "style.scss" is overriden by "color: red;" 
+  // here, because this .text class stays after the .text class imported from
+  // "style.scss" (the code imported on SCSS side keeps its ordering).
+  color: red;
+}
 
-Thanks to [Nik Graf](http://www.twitter.com/nikgraf) and [Mark Dalgleish](http://www.twitter.com/markdalgleish) for their thoughts about theming and customization for React components.
+// Demo.jsx
 
-## License
+import React from 'react';
+import { ThemeProvider } from 'react-css-super-themr';
+import Component from './Component';
+import adhocTheme from './adhoc-style.scss';
+import contextTheme from './context-style.scss';
 
-This project is licensed under the terms of the [MIT license](https://github.com/javivelasco/react-css-themr/blob/master/LICENSE).
+export default function Demo() {
+  return (
+    <div>
+      <Component theme={adhocTheme} />
+      <ThemeProvider
+        theme={{ Component: contextTheme }}
+      >
+        <Component /> 
+        <Component />
+      </ThemeProvider>
+    </div>
+  );
+}
+```
+
+Another example: for one of the component instances we apply both context and ad-hoc styling. Ad-hoc styling is used to change the padding for the specific component instance:
+```js
+// adhoc-style-2.scss
+
+.box {
+  padding: 64px !important;
+}
+
+// Demo.jsx
+
+import React from 'react';
+import { ThemeProvider } from 'react-css-super-themr';
+import Component from './Component';
+import adhocTheme from './adhoc-style.scss';
+import adhocTheme2 from './adhoc-style-2.scss';
+import contextTheme from './context-style.scss';
+
+export default function Demo() {
+  return (
+    <div>
+      <Component theme={adhocTheme} />
+      <ThemeProvider
+        theme={{ Component: contextTheme }}
+      >
+        <Component theme={adhocTheme2} /> 
+        <Component />
+      </ThemeProvider>
+    </div>
+  );
+}
+```
+
+### API Reference
+#### `COMPOSE`
+An object holding three constants: `COMPOSE.DEEP`, `COMPOSE.SOFT`, and `COMPOSE.SWAP`. These are the valid values for theme composition (merge) options.
+
+#### `PRIORITY`
+An object holding two constants: `PRIORITY.ADHOC_CONTEXT_DEFAULT`, and `PRIORITY.ADHOC_DEFAULT_CONTEXT`. These are the valid values for the theme priority options.
+
+#### `themr(componentName, [defaultTheme], [options])`
+Returns a `function` to wrap a component and make it themeable. The component returned by this function, apart from the props of original component, accepts:
+-   `composeAdhocTheme` - Optional. Specifies how the ad-hoc theme should be merged into other themes. The valid values are those from `COMPOSE` object. Defaults to `COMPOSE.DEEP`;
+-   `composeContextTheme` - Optional. Specifies how the context theme should be merged into the default one (or the default one into the context one, if their priority has been switched). Defaults to `COMPOSE.SOFT`.
+-   `theme` - Optional. Ad-hoc theme;
+-   `themePriority` - Optional. Specifies priorities of context and default themes. Defailts to `PRIORITY.ADHOC_CONTEXT_DEFAULT`.
+
+Arguments of `themr(..)` itself are:
+-   `componentName` *(String)* It is used to provide an unique identifier to the component, that will be used to get corresponding context theme;
+-   `defaultTheme` *(Object)* Default theme, it is a classname object resolved from CSS modules.
+-   `options` *(Object)* If specified, it allows to customize the behavior
+    - `composeAdhocTheme` - Changes the default value of `composeAdhocTheme` prop of the wrapped object;
+    - `composeContextTheme` - Changes the default value of `composeContextTheme` prop of the wrapped object;
+    - `themePriority` - Changes the default value of `themePriority` prop of the wrapped object;
+    - `[mapThemrProps = (props, theme) => ({ ref, theme })]` *(Function)* allows to
+    customize how properties are passed down to the decorated component. By default, themr extracts all own properties passing down just `innerRef` as `ref` and the generated theme as `theme`. If you are decorating a component that needs to map the reference or any other custom property, this function is called with *all* properties given to the component plus the generated `theme` in the second parameter. It should return the properties you want to pass.
+
+#### `<ThemeProvider theme>`
+Makes available a `theme` context to be used by styled component instances. `theme` should be an object, which keys correspond to the names of themeable components (passed as the first argument into their `themr(..)` decorators), and the values are the context themes to apply.
+
+### About
+This project is licensed under the terms of the [MIT license](https://github.com/birdofpreyru/react-css-super-themr/blob/master/LICENSE).
+
+Original package, [`react-css-themr`](https://github.com/javivelasco/react-css-themr), is authored by [Javi Velasco](http://www.javivelasco.com) as an effort of providing a better customization experience for [React Toolbox](http://www.react-toolbox.com).
+
+This package, `react-css-super-themr` was forked from `react-css-themr@2.1.2` and customized by Dr. Sergey Pogodin aka [birdofpreyru](https://www.topcoder.com/members/birdofpreyru/).

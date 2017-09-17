@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import PropTypes from 'prop-types'
+import PT from 'prop-types'
 import hoistNonReactStatics from 'hoist-non-react-statics'
 import invariant from 'invariant'
 
@@ -16,14 +16,43 @@ const COMPOSE_DEEPLY = 'deeply'
 const COMPOSE_SOFTLY = 'softly'
 const DONT_COMPOSE = false
 
+/* Valid composition options. */
+export const COMPOSE = {
+  DEEP: COMPOSE_DEEPLY,
+  SOFT: COMPOSE_SOFTLY,
+  SWAP: DONT_COMPOSE,
+};
+
+/* Valid priority options. */
+export const PRIORITY = {
+  ADHOC_CONTEXT_DEFAULT: 'adhoc-context-default',
+  ADHOC_DEFAULT_CONTEXT: 'adhoc-default-context',
+};
+
 const DEFAULT_OPTIONS = {
-  composeTheme: COMPOSE_DEEPLY,
-  mapThemrProps: defaultMapThemrProps
-}
+  composeAdhocTheme: COMPOSE.DEEP,
+  composeContextTheme: COMPOSE.SOFT,
+  mapThemrProps: defaultMapThemrProps,
+  themePriority: PRIORITY.ADHOC_CONTEXT_DEFAULT,
+};
+
+const COMPOSE_TYPE = PT.oneOf([COMPOSE.DEEP, COMPOSE.SOFT, COMPOSE.SWAP]);
+const PRIORITY_TYPE = PT.oneOf([
+  PRIORITY.ADHOC_CONTEXT_DEFAULT, PRIORITY.ADHOC_DEFAULT_CONTEXT]);
+
+/* Valid types of themr(..) options. */
+const optionTypes = {
+  composeAdhocTheme: COMPOSE_TYPE.isRequired,
+  composeContextTheme: PT.oneOf([COMPOSE.SOFT, COMPOSE.SWAP]).isRequired,
+  mapThemrProps: PT.func.isRequired,
+  themePriority: PRIORITY_TYPE.isRequired,
+};
 
 const THEMR_CONFIG = typeof Symbol !== 'undefined' ?
   Symbol('THEMR_CONFIG') :
   '__REACT_CSS_THEMR_CONFIG__'
+
+/* TODO: localTheme should be renamed into defaultTheme, to avoid confusion. */
 
 /**
  * Themr decorator
@@ -33,11 +62,8 @@ const THEMR_CONFIG = typeof Symbol !== 'undefined' ?
  * @returns {function(ThemedComponent:Function):Function} - ThemedComponent
  */
 export default (componentName, localTheme, options = {}) => (ThemedComponent) => {
-  const {
-    composeTheme: optionComposeTheme,
-    mapThemrProps: optionMapThemrProps
-  } = { ...DEFAULT_OPTIONS, ...options }
-  validateComposeOption(optionComposeTheme)
+  const ops = { ...DEFAULT_OPTIONS, ...options};
+  PT.checkPropTypes(optionTypes, ops, 'option', 'themr(..)')
 
   let config = ThemedComponent[THEMR_CONFIG]
   if (config && config.componentName === componentName) {
@@ -57,22 +83,26 @@ export default (componentName, localTheme, options = {}) => (ThemedComponent) =>
     static displayName = `Themed${ThemedComponent.name}`;
 
     static contextTypes = {
-      themr: PropTypes.object
+      themr: PT.object
     }
 
     static propTypes = {
       ...ThemedComponent.propTypes,
-      composeTheme: PropTypes.oneOf([ COMPOSE_DEEPLY, COMPOSE_SOFTLY, DONT_COMPOSE ]),
-      innerRef: PropTypes.func,
-      theme: PropTypes.object,
-      themeNamespace: PropTypes.string,
-      mapThemrProps: PropTypes.func
+      composeAdhocTheme: COMPOSE_TYPE,
+      composeContextTheme: PT.oneOf([COMPOSE.SOFT, COMPOSE.SWAP]),
+      innerRef: PT.func,
+      mapThemrProps: PT.func,
+      theme: PT.object,
+      themeNamespace: PT.string,
+      themePriority: PRIORITY_TYPE,
     }
 
     static defaultProps = {
       ...ThemedComponent.defaultProps,
-      composeTheme: optionComposeTheme,
-      mapThemrProps: optionMapThemrProps
+      composeAdhocTheme: ops.composeAdhocTheme,
+      composeContextTheme: ops.composeContextTheme,
+      mapThemrProps: ops.mapThemrProps,
+      themePriority: ops.themePriority,
     }
 
     constructor(...args) {
@@ -126,17 +156,31 @@ export default (componentName, localTheme, options = {}) => (ThemedComponent) =>
     }
 
     calcTheme(props) {
-      const { composeTheme } = props
-      return composeTheme
-        ? this.getTheme(props)
-        : this.getThemeNotComposed(props)
+      if (props.composeAdhocTheme === COMPOSE.SWAP) {
+        return this.getNamespacedTheme(props) || {};
+      }
+      let theme;
+      if (props.composeContextTheme === COMPOSE.SWAP) {
+        theme = props.themePriority === PRIORITY.ADHOC_CONTEXT_DEFAULT
+          ? this.getContextTheme() : config.localTheme;
+      } else { /* props.composeContextTheme equals COMPOSE.SOFT */
+        theme = props.themePriority === PRIORITY.ADHOC_CONTEXT_DEFAULT
+          ? { ...config.localTheme, ...this.getContextTheme() }
+          : { ...this.getContextTheme(), ...config.localTheme };
+      }
+      theme = props.composeAdhocTheme === COMPOSE.SOFT
+        ? { ...theme, ...this.getNamespacedTheme(props) }
+        : themeable(this.getNamespacedTheme(props), theme);
+      return theme;
     }
 
     componentWillReceiveProps(nextProps) {
       if (
-        nextProps.composeTheme !== this.props.composeTheme ||
+        nextProps.composeAdhocTheme !== this.props.composeAdhocTheme ||
+        nextProps.composeContextTheme !== this.props.composeAdhocTheme ||
         nextProps.theme !== this.props.theme ||
-        nextProps.themeNamespace !== this.props.themeNamespace
+        nextProps.themeNamespace !== this.props.themeNamespace ||
+        nextProps.themePriority !== this.props.themePriority
       ) {
         this.theme_ = this.calcTheme(nextProps)
       }
@@ -253,23 +297,6 @@ function merge(original = {}, mixin = {}) {
 }
 
 /**
- * Validates compose option
- *
- * @param {String|Boolean} composeTheme - Compose them option
- * @throws
- * @returns {undefined}
- */
-function validateComposeOption(composeTheme) {
-  if ([ COMPOSE_DEEPLY, COMPOSE_SOFTLY, DONT_COMPOSE ].indexOf(composeTheme) === -1) {
-    throw new Error(
-      `Invalid composeTheme option for react-css-themr. Valid composition options\
- are ${COMPOSE_DEEPLY}, ${COMPOSE_SOFTLY} and ${DONT_COMPOSE}. The given\
- option was ${composeTheme}`
-    )
-  }
-}
-
-/**
  * Removes namespace from key
  *
  * @param {String} key - Key
@@ -291,10 +318,12 @@ function removeNamespace(key, themeNamespace) {
  */
 function defaultMapThemrProps(ownProps, theme) {
   const {
-    composeTheme,   //eslint-disable-line no-unused-vars
+    composeAdhocTheme,   //eslint-disable-line no-unused-vars
+    composeContextTheme, // eslint-disable-line no-unused-vars
     innerRef,
     themeNamespace, //eslint-disable-line no-unused-vars
     mapThemrProps,  //eslint-disable-line no-unused-vars
+    themePriority, // eslint-disable-line no-unused-vars
     ...rest
   } = ownProps
 

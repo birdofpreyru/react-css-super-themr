@@ -1,25 +1,25 @@
 {
-  "name": "react-css-themr",
-  "description": "React CSS Themr",
-  "homepage": "https://github.com/javivelasco/react-css-themr#readme",
-  "version": "2.1.2",
+  "name": "react-css-super-themr",
+  "description": "React CSS Super Themr",
+  "homepage": "https://github.com/birdofpreyru/react-css-super-themr#readme",
+  "version": "2.2.0",
   "main": "./lib",
   "author": {
-    "email": "javier.velasco86@gmail.com",
-    "name": "Javi Velasco",
-    "url": "http://javivelasco.com/"
+    "email": "dr.pogodin@gmail.com",
+    "name": "Dr. Sergey Pogodin"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/javivelasco/react-css-themr.git"
+    "url": "git+https://github.com/birdofpreyru/react-css-super-themr.git"
   },
   "bugs": {
-    "url": "https://github.com/javivelasco/react-css-themr/issues"
+    "url": "https://github.com/birdofpreyru/react-css-super-themr/issues"
   },
   "keywords": [
     "css-modules",
     "customization",
     "react",
+    "react-css-super-themr",
     "react-css-themr",
     "theming"
   ],
